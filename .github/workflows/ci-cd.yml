@@ -52,6 +52,7 @@ jobs:
       - name: Sync to /srv/wedding/backend
         run: |
           rsync -a --delete --exclude='.git' ./ /srv/wedding/backend/
+          rsync -a --delete --exclude='.git' ./docker-compose.yml /srv/wedding/docker-compose.yml
 
       # ---- Build & Deploy with Compose on the server ----
       - name: Build backend image with BuildKit
