@@ -3,13 +3,21 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for image processing
+# Install system dependencies for image processing and OpenCV
 RUN apt-get update && apt-get install -y \
     gcc \
     libjpeg-dev \
     libpng-dev \
     libtiff-dev \
     libfreetype6-dev \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    libopencv-dev \
+    python3-opencv \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install dependencies
