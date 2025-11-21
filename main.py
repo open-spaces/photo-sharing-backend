@@ -44,16 +44,17 @@ allowed_origins = ["*"]  # For development - should be restricted in production
 
 # Check if running in production (not localhost/127.0.0.1)
 is_production = (
-    "localhost" not in config.SERVER_HOST.lower() and
-    "127.0.0.1" not in config.SERVER_HOST and
-    "0.0.0.0" not in config.SERVER_HOST
+    "localhost" not in config.PUBLIC_URL.lower() and
+    "127.0.0.1" not in config.PUBLIC_URL
 )
 
 if is_production:
     # In production, specify actual frontend domains
     allowed_origins = [
         "https://wedding.open-spaces.xyz",
-        "https://www.wedding.open-spaces.xyz"
+        "https://www.wedding.open-spaces.xyz",
+        "http://wedding.open-spaces.xyz",
+        "http://www.wedding.open-spaces.xyz"
     ]
 
 app.add_middleware(
@@ -504,7 +505,7 @@ async def get_persons(db: Session = Depends(get_db)):
                     person_id=representative_face_record.person_id,
                     bbox=json.loads(representative_face_record.bbox_json),
                     confidence=representative_face_record.confidence,
-                    photo_url=f"{config.SERVER_HOST}/uploads/{photo.stored_filename}"
+                    photo_url=f"{config.PUBLIC_URL}/uploads/{photo.stored_filename}"
                 )
 
         result.append(PersonOut(
@@ -554,7 +555,7 @@ async def get_person_photos(
 
         result.append(PhotoOut(
             id=photo.id,
-            url=f"{config.SERVER_HOST}/uploads/{photo.stored_filename}",
+            url=f"{config.PUBLIC_URL}/uploads/{photo.stored_filename}",
             original_filename=photo.original_filename,
             stored_filename=photo.stored_filename,
             content_type=photo.content_type,

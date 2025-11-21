@@ -19,8 +19,13 @@ class Config:
     
     
     # Server settings
-    SERVER_HOST = os.getenv("SERVER_HOST", "http://localhost:8000")
+    SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")  # Bind address for uvicorn
     SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
+
+    # Public URL for generating links (images, API docs, etc.)
+    # In development: http://localhost:8000
+    # In production: https://wedding.open-spaces.xyz
+    PUBLIC_URL = os.getenv("PUBLIC_URL", f"http://localhost:{SERVER_PORT}")
     
     # File settings
     UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
