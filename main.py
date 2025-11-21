@@ -70,8 +70,9 @@ app.add_middleware(
 async def _startup():
     init_db()
 
-# Mount static files
-app.mount("/api/uploads", StaticFiles(directory=config.UPLOAD_DIR), name="uploads")
+# Note: Static files (uploads) are served by nginx in production
+# In development, you can uncomment the line below or access files via nginx
+# app.mount("/uploads", StaticFiles(directory=config.UPLOAD_DIR), name="uploads")
 
 # Background task for face detection
 def process_face_detection(photo_id: int, image_path: str):
@@ -265,7 +266,6 @@ async def list_photos(request: Request, db: Session = Depends(get_db), response:
             response.headers["Cache-Control"] = "no-store"
             response.headers["Pragma"] = "no-cache"
         return cached[1]
-    base = str(request.base_url).rstrip("/")
     rows = (
         db.query(orm.Photo, orm.User)
         .outerjoin(orm.User, orm.Photo.user_id == orm.User.id)
@@ -274,7 +274,7 @@ async def list_photos(request: Request, db: Session = Depends(get_db), response:
     )
     result: list[PhotoOut] = []
     for photo, user in rows:
-        url = f"{base}/api/uploads/{photo.stored_filename}"
+        url = f"{config.PUBLIC_URL}/api/uploads/{photo.stored_filename}"
         result.append(
             PhotoOut(
                 id=photo.id,
@@ -308,7 +308,6 @@ async def my_photos(request: Request, db: Session = Depends(get_db), current_use
             response.headers["Cache-Control"] = "no-store"
             response.headers["Pragma"] = "no-cache"
         return cached[1]
-    base = str(request.base_url).rstrip("/")
     user = db.query(orm.User).filter(orm.User.username == current_user).first()
     if not user:
         return []
@@ -320,7 +319,7 @@ async def my_photos(request: Request, db: Session = Depends(get_db), current_use
     )
     result: list[PhotoOut] = []
     for photo in rows:
-        url = f"{base}/api/uploads/{photo.stored_filename}"
+        url = f"{config.PUBLIC_URL}/api/uploads/{photo.stored_filename}"
         result.append(
             PhotoOut(
                 id=photo.id,
@@ -593,7 +592,7 @@ async def get_photo_faces(
             person_id=face.person_id,
             bbox=json.loads(face.bbox_json),
             confidence=face.confidence,
-            photo_url=f"uploads/{photo.stored_filename}"
+            photo_url=f"{config.PUBLIC_URL}/api/uploads/{photo.stored_filename}"
         ))
 
     return result
