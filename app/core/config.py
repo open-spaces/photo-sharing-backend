@@ -1,7 +1,8 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env file and override existing environment variables
+load_dotenv(override=True)
 
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY")
@@ -18,7 +19,7 @@ class Config:
     
     
     # Server settings
-    SERVER_HOST = os.getenv("SERVER_HOST", "127.0.0.1")
+    SERVER_HOST = os.getenv("SERVER_HOST", "http://localhost:8000")
     SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
     
     # File settings

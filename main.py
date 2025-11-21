@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, Depends, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, Depends, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -41,7 +41,15 @@ _photos_cache: dict[str, tuple[float, list[PhotoOut]]] = {}
 
 # Configure CORS - restrict origins in production
 allowed_origins = ["*"]  # For development - should be restricted in production
-if config.SERVER_HOST != "127.0.0.1" and config.SERVER_HOST != "localhost" and config.SERVER_HOST != "0.0.0.0":
+
+# Check if running in production (not localhost/127.0.0.1)
+is_production = (
+    "localhost" not in config.SERVER_HOST.lower() and
+    "127.0.0.1" not in config.SERVER_HOST and
+    "0.0.0.0" not in config.SERVER_HOST
+)
+
+if is_production:
     # In production, specify actual frontend domains
     allowed_origins = [
         "https://wedding.open-spaces.xyz",
@@ -64,6 +72,71 @@ async def _startup():
 # Mount static files
 app.mount("/uploads", StaticFiles(directory=config.UPLOAD_DIR), name="uploads")
 
+# Background task for face detection
+def process_face_detection(photo_id: int, image_path: str):
+    """
+    Background task to detect faces in an uploaded image.
+    This runs asynchronously after the upload completes.
+    """
+    from app.db.database import SessionLocal
+    db = SessionLocal()
+
+    try:
+        logger.info(f"Starting face detection for photo_id={photo_id}")
+
+        # Detect faces in the uploaded image
+        face_data_list = detect_faces_in_image(image_path)
+
+        for face_data in face_data_list:
+            embedding = face_data['embedding']
+            bbox = face_data['bbox']
+            confidence = face_data['confidence']
+
+            # Try to match this face with existing persons
+            existing_persons_query = db.query(
+                orm.Person.id,
+                orm.Face.embedding
+            ).join(orm.Face, orm.Person.id == orm.Face.person_id).all()
+
+            existing_persons = [
+                (person_id, json.loads(embedding_json))
+                for person_id, embedding_json in existing_persons_query
+            ]
+
+            # Find matching person (or None if no match)
+            matched_person_id = find_matching_person(
+                embedding,
+                existing_persons,
+                threshold=0.6
+            )
+
+            # If no match, create a new person
+            if matched_person_id is None:
+                new_person = orm.Person()
+                db.add(new_person)
+                db.commit()
+                db.refresh(new_person)
+                matched_person_id = new_person.id
+
+            # Create face record
+            face = orm.Face(
+                photo_id=photo_id,
+                person_id=matched_person_id,
+                embedding=json.dumps(embedding),
+                bbox_json=json.dumps(bbox),
+                confidence=confidence
+            )
+            db.add(face)
+
+        db.commit()
+        logger.info(f"Face detection completed for photo_id={photo_id}, found {len(face_data_list)} faces")
+
+    except Exception as e:
+        logger.error(f"Error detecting faces for photo_id={photo_id}: {str(e)}")
+        db.rollback()
+    finally:
+        db.close()
+
 # Authentication endpoints
 @app.post("/google-login", response_model=Token)
 async def google_login(google_token: GoogleToken, db: Session = Depends(get_db)):
@@ -81,6 +154,7 @@ async def verify_user_token(current_user: str = Depends(verify_token)):
     description="Upload up to 10 image files (jpg, jpeg, png)."
 )
 async def upload_images(
+    background_tasks: BackgroundTasks,
     images: list[UploadFile] = File(..., description="List of image files"),
     current_user: str = Depends(verify_token),
     db: Session = Depends(get_db),
@@ -163,56 +237,9 @@ async def upload_images(
         db.commit()
         db.refresh(photo)  # Get the photo ID
 
-        # Detect faces in the uploaded image
-        try:
-            face_data_list = detect_faces_in_image(save_path)
-
-            for face_data in face_data_list:
-                embedding = face_data['embedding']
-                bbox = face_data['bbox']
-                confidence = face_data['confidence']
-
-                # Try to match this face with existing persons
-                existing_persons_query = db.query(
-                    orm.Person.id,
-                    orm.Face.embedding
-                ).join(orm.Face, orm.Person.id == orm.Face.person_id).all()
-
-                existing_persons = [
-                    (person_id, json.loads(embedding_json))
-                    for person_id, embedding_json in existing_persons_query
-                ]
-
-                # Find matching person (or None if no match)
-                matched_person_id = find_matching_person(
-                    embedding,
-                    existing_persons,
-                    threshold=0.6
-                )
-
-                # If no match, create a new person
-                if matched_person_id is None:
-                    new_person = orm.Person()
-                    db.add(new_person)
-                    db.commit()
-                    db.refresh(new_person)
-                    matched_person_id = new_person.id
-
-                # Create face record
-                face = orm.Face(
-                    photo_id=photo.id,
-                    person_id=matched_person_id,
-                    embedding=json.dumps(embedding),
-                    bbox_json=json.dumps(bbox),
-                    confidence=confidence
-                )
-                db.add(face)
-
-            db.commit()
-
-        except Exception as e:
-            logger.error(f"Error detecting faces for {image.filename}: {str(e)}")
-            # Continue even if face detection fails
+        # Schedule face detection to run in the background
+        background_tasks.add_task(process_face_detection, photo.id, save_path)
+        logger.info(f"Scheduled face detection for photo_id={photo.id}")
 
         added += 1
 
@@ -344,12 +371,38 @@ async def delete_photo(
 
 # Face recognition endpoints
 @app.post("/process-existing-photos", summary="Process all photos without face detection")
-async def process_existing_photos(db: Session = Depends(get_db)):
+async def process_existing_photos(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
     Process all existing photos that don't have face detection results.
     This is useful for retroactively adding face detection to photos uploaded before the feature was enabled.
+    Processes photos in the background and returns immediately.
     """
     # Get all photos that don't have any faces detected
+    photos_without_faces = db.query(orm.Photo).outerjoin(
+        orm.Face, orm.Photo.id == orm.Face.photo_id
+    ).filter(orm.Face.id == None).all()
+
+    # Schedule background tasks for each photo
+    for photo in photos_without_faces:
+        file_path = os.path.join(config.UPLOAD_DIR, photo.stored_filename)
+        if os.path.exists(file_path):
+            background_tasks.add_task(process_face_detection, photo.id, file_path)
+        else:
+            logger.warning(f"Photo file not found: {file_path}")
+
+    return {
+        "status": "processing",
+        "message": f"Scheduled face detection for {len(photos_without_faces)} photos",
+        "photos_scheduled": len(photos_without_faces)
+    }
+
+
+# Legacy synchronous implementation (kept for reference, not used)
+def _process_existing_photos_sync(db: Session):
+    """
+    Synchronous version of process_existing_photos.
+    This is kept for reference but not used as an endpoint.
+    """
     photos_without_faces = db.query(orm.Photo).outerjoin(
         orm.Face, orm.Photo.id == orm.Face.photo_id
     ).filter(orm.Face.id == None).all()
@@ -365,7 +418,7 @@ async def process_existing_photos(db: Session = Depends(get_db)):
                 logger.warning(f"Photo file not found: {file_path}")
                 continue
 
-            # Detect faces
+            # This is the legacy synchronous implementation
             face_data_list = detect_faces_in_image(file_path)
 
             for face_data in face_data_list:
@@ -417,12 +470,7 @@ async def process_existing_photos(db: Session = Depends(get_db)):
             logger.error(f"Error processing photo {photo.id}: {str(e)}")
             continue
 
-    return {
-        "status": "success",
-        "photos_processed": processed_count,
-        "faces_detected": faces_detected_count,
-        "message": f"Processed {processed_count} photos and detected {faces_detected_count} faces"
-    }
+    # Not used, kept for reference
 
 
 @app.get("/persons", response_model=list[PersonOut], summary="Get all detected persons with face counts")
@@ -544,7 +592,7 @@ async def get_photo_faces(
             person_id=face.person_id,
             bbox=json.loads(face.bbox_json),
             confidence=face.confidence,
-            photo_url=f"{config.SERVER_HOST}/uploads/{photo.stored_filename}"
+            photo_url=f"uploads/{photo.stored_filename}"
         ))
 
     return result
