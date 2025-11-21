@@ -10,12 +10,14 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libtiff-dev \
     libfreetype6-dev \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    libxrender-dev \
+    libxrender1 \
     libgomp1 \
+    libopencv-dev \
+    python3-opencv \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install dependencies
