@@ -48,11 +48,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     libjpeg62-turbo \
     libpng16-16 \
-<<<<<<< HEAD
     libtiff6 \
-=======
-    libtiff5 \
->>>>>>> bf0e47add6117223dddc9b0bda6457e882c75293
     libfreetype6 \
     libgl1 \
     libglib2.0-0 \
