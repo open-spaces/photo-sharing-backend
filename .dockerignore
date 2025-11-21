@@ -1,19 +1,76 @@
-# Backend Docker ignore file
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-.git
+# Backend Docker ignore file - optimized for faster builds
+
+# Git files
+.git/
 .gitignore
-README.md
-.env.local
-.env.development
-.pytest_cache
+.gitattributes
+.github/
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing and coverage
+.pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
 .tox/
-.venv
-venv/
-.mypy_cache
+*.cover
+.hypothesis/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
+
+# Documentation
+README.md
+docs/
+*.md
+!requirements.txt
+
+# Environment files (will be mounted at runtime)
+.env.local
+.env.development
+.env.production
+.env.example
+.env.production.example
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Data directories (will be mounted as volumes)
+uploads/
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+
+# Dockerfile itself (no need to copy into image)
+Dockerfile
+docker-compose*.yml

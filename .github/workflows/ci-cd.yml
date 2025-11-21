@@ -54,8 +54,11 @@ jobs:
           rsync -a --delete --exclude='.git' ./ /srv/wedding/backend/
 
       # ---- Build & Deploy with Compose on the server ----
-      - name: Build backend image
-        run: docker compose -f /srv/wedding/docker-compose.yml build --no-cache backend
+      - name: Build backend image with BuildKit
+        env:
+          DOCKER_BUILDKIT: 1
+          COMPOSE_DOCKER_CLI_BUILD: 1
+        run: docker compose -f /srv/wedding/docker-compose.yml build backend
 
       - name: Start/Update backend
         run: docker compose -f /srv/wedding/docker-compose.yml up -d --no-deps backend
