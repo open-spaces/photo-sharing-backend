@@ -71,7 +71,7 @@ async def _startup():
     init_db()
 
 # Mount static files
-app.mount("/api/uploads", StaticFiles(directory=config.UPLOAD_DIR), name="uploads")
+app.mount("/uploads", StaticFiles(directory=config.UPLOAD_DIR), name="uploads")
 
 # Background task for face detection
 def process_face_detection(photo_id: int, image_path: str):
@@ -274,7 +274,7 @@ async def list_photos(request: Request, db: Session = Depends(get_db), response:
     )
     result: list[PhotoOut] = []
     for photo, user in rows:
-        url = f"{base}/uploads/{photo.stored_filename}"
+        url = f"{base}/api/uploads/{photo.stored_filename}"
         result.append(
             PhotoOut(
                 id=photo.id,
@@ -320,7 +320,7 @@ async def my_photos(request: Request, db: Session = Depends(get_db), current_use
     )
     result: list[PhotoOut] = []
     for photo in rows:
-        url = f"{base}/uploads/{photo.stored_filename}"
+        url = f"{base}/api/uploads/{photo.stored_filename}"
         result.append(
             PhotoOut(
                 id=photo.id,
@@ -505,7 +505,7 @@ async def get_persons(db: Session = Depends(get_db)):
                     person_id=representative_face_record.person_id,
                     bbox=json.loads(representative_face_record.bbox_json),
                     confidence=representative_face_record.confidence,
-                    photo_url=f"{config.PUBLIC_URL}/uploads/{photo.stored_filename}"
+                    photo_url=f"{config.PUBLIC_URL}/api/uploads/{photo.stored_filename}"
                 )
 
         result.append(PersonOut(
@@ -555,7 +555,7 @@ async def get_person_photos(
 
         result.append(PhotoOut(
             id=photo.id,
-            url=f"{config.PUBLIC_URL}/uploads/{photo.stored_filename}",
+            url=f"{config.PUBLIC_URL}/api/uploads/{photo.stored_filename}",
             original_filename=photo.original_filename,
             stored_filename=photo.stored_filename,
             content_type=photo.content_type,
