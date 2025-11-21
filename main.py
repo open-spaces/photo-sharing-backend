@@ -71,7 +71,7 @@ async def _startup():
     init_db()
 
 # Mount static files
-app.mount("/uploads", StaticFiles(directory=config.UPLOAD_DIR), name="uploads")
+app.mount("/api/uploads", StaticFiles(directory=config.UPLOAD_DIR), name="uploads")
 
 # Background task for face detection
 def process_face_detection(photo_id: int, image_path: str):
