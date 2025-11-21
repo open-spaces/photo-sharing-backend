@@ -1,7 +1,8 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env file and override existing environment variables
+load_dotenv(override=True)
 
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY")
@@ -18,8 +19,13 @@ class Config:
     
     
     # Server settings
-    SERVER_HOST = os.getenv("SERVER_HOST", "127.0.0.1")
+    SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")  # Bind address for uvicorn
     SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
+
+    # Public URL for generating links (images, API docs, etc.)
+    # In development: http://localhost:8000
+    # In production: https://wedding.open-spaces.xyz
+    PUBLIC_URL = os.getenv("PUBLIC_URL", f"http://localhost:{SERVER_PORT}")
     
     # File settings
     UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")

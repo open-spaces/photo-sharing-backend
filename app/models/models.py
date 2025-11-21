@@ -37,7 +37,7 @@ class FaceOut(BaseModel):
     person_id: Optional[int]
     bbox: Dict[str, int]
     confidence: Optional[float]
-    photo_url: str
+    photo_url: Optional[str] = None
 
 
 class PersonOut(BaseModel):

@@ -1,11 +1,19 @@
-# FastAPI Backend Dockerfile
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1.4
+# FastAPI Backend Dockerfile - Optimized for faster builds
+
+# ============================================================================
+# Stage 1: Build dependencies
+# ============================================================================
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install system dependencies for image processing and OpenCV
-RUN apt-get update && apt-get install -y \
+# Install build dependencies with cache mount (speeds up apt-get)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
     libjpeg-dev \
     libpng-dev \
     libtiff-dev \
@@ -17,14 +25,46 @@ RUN apt-get update && apt-get install -y \
     libxrender1 \
     libgomp1 \
     libopencv-dev \
+    python3-opencv
+
+# Copy only requirements first (better layer caching - only rebuilds if requirements change)
+COPY requirements.txt .
+
+# Install Python dependencies with pip cache mount (reuses downloads across builds)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip setuptools wheel && \
+    pip install -r requirements.txt
+
+# ============================================================================
+# Stage 2: Runtime image (smaller, no build tools)
+# ============================================================================
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install only runtime dependencies (not build tools like gcc)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    libjpeg62-turbo \
+    libpng16-16 \
+    libtiff6 \
+    libfreetype6 \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
     python3-opencv \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy installed Python packages from builder stage
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
+# Copy application code (use .dockerignore to exclude unnecessary files)
 COPY . .
 
 # Create uploads directory with proper permissions
@@ -37,9 +77,14 @@ ENV ALGORITHM=${ALGORITHM:-HS256}
 ENV ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
 ENV SERVER_HOST=${SERVER_HOST:-0.0.0.0}
 ENV SERVER_PORT=${SERVER_PORT:-8000}
+ENV PUBLIC_URL=${PUBLIC_URL:-http://localhost:8000}
 ENV UPLOAD_DIR=${UPLOAD_DIR:-uploads}
 ENV MAX_FILE_SIZE=${MAX_FILE_SIZE:-5242880}
 ENV DB_URL=${DB_URL:-sqlite:///./data/app.db}
+
+# Python optimizations
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # Expose the port that will be used
 EXPOSE ${SERVER_PORT:-8000}
