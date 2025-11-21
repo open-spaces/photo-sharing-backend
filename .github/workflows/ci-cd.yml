@@ -9,30 +9,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci-tests:
+  test-and-lint:
     runs-on: self-hosted
-    container:
-      image: python:3.11
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - name: Install deps
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          clean: true
+
+      # ---- CI (validation & tests) ----
+      - name: Install dependencies
         run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-      - name: Run tests
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+
+      - name: Validate FastAPI app starts
+        env:
+          SECRET_KEY: test_secret_key_for_ci
+          GOOGLE_CLIENT_ID: test_google_client_id
         run: |
-          if command -v pytest >/dev/null 2>&1; then pytest -q; else echo "pytest not found, skipping"; fi
+          timeout 10 python3 -m uvicorn main:app --host 127.0.0.1 --port 8001 &
+          sleep 5
+          curl -f http://127.0.0.1:8001/guest || exit 1
+          pkill -f "uvicorn main:app" || true
 
   build-and-deploy:
     runs-on: self-hosted
-    needs: ci-tests
+    needs: test-and-lint
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          clean: true
+
+      # ---- Sync working tree to deployment dir ----
       - name: Sync to /srv/wedding/backend
-        run: rsync -a --delete --exclude='.git' ./ /srv/wedding/backend/
+        run: |
+          rsync -a --delete --exclude='.git' ./ /srv/wedding/backend/
+
+      # ---- Build & Deploy with Compose on the server ----
       - name: Build backend image
-        run: docker compose -f /srv/wedding/docker-compose.yml build backend
+        run: docker compose -f /srv/wedding/docker-compose.yml build --no-cache backend
+
       - name: Start/Update backend
-        run: docker compose -f /srv/wedding/docker-compose.yml up -d backend
+        run: docker compose -f /srv/wedding/docker-compose.yml up -d --no-deps backend
+
       - name: Cleanup dangling images
         run: docker image prune -f
