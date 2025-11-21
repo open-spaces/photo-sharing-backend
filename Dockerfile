@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create uploads directory with proper permissions
-RUN mkdir -p uploads && chmod 755 uploads
+RUN mkdir -p uploads data && chmod 755 uploads data
 
 # Set environment variables with defaults
 ENV SECRET_KEY=${SECRET_KEY:-default_secret_key}
@@ -31,6 +31,7 @@ ENV SERVER_HOST=${SERVER_HOST:-0.0.0.0}
 ENV SERVER_PORT=${SERVER_PORT:-8000}
 ENV UPLOAD_DIR=${UPLOAD_DIR:-uploads}
 ENV MAX_FILE_SIZE=${MAX_FILE_SIZE:-5242880}
+ENV DB_URL=${DB_URL:-sqlite:///./data/app.db}
 
 # Expose the port that will be used
 EXPOSE ${SERVER_PORT:-8000}

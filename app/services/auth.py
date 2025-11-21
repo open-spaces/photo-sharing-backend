@@ -8,11 +8,11 @@ from google.oauth2 import id_token
 
 from app.core.config import config
 from app.models.models import Token, GoogleToken
+from app.db.deps import get_db
+from app.db import models as orm
+from sqlalchemy.orm import Session
 
 security = HTTPBearer()
-
-# Simple in-memory user storage (in production, use a database)
-users_db = {}
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -24,21 +24,32 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, config.SECRET_KEY, algorithm=config.ALGORITHM)
     return encoded_jwt
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
     try:
         payload = jwt.decode(credentials.credentials, config.SECRET_KEY, algorithms=[config.ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             raise HTTPException(status_code=401, detail="Invalid authentication credentials")
-        if username not in users_db:
+        # Ensure user exists in DB
+        user = db.query(orm.User).filter(orm.User.username == username).first()
+        if not user:
             raise HTTPException(status_code=401, detail="User not found")
+
+        # Optional: verify session token exists and is not expired/revoked
+        session = (
+            db.query(orm.Session)
+            .filter(orm.Session.user_id == user.id, orm.Session.token == credentials.credentials)
+            .first()
+        )
+        if not session or session.revoked or session.expires_at <= datetime.utcnow():
+            raise HTTPException(status_code=401, detail="Session expired or invalid")
         return username
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid authentication credentials")
 
 class AuthService:
     @staticmethod
-    async def google_login(google_token: GoogleToken) -> Token:
+    async def google_login(google_token: GoogleToken, db: Session) -> Token:
         try:
             # Verify the Google token
             idinfo = id_token.verify_oauth2_token(
@@ -56,23 +67,35 @@ class AuthService:
             
             # Create or get existing user
             username = f"google_{google_id}"
-            
-            if username not in users_db:
-                # Create new user from Google account
-                users_db[username] = {
-                    "username": username,
-                    "email": email,
-                    "name": name,
-                    "google_id": google_id,
-                    "provider": "google"
-                }
-            
+
+            # Create or fetch user in DB
+            user = db.query(orm.User).filter(orm.User.username == username).first()
+            if not user:
+                user = orm.User(
+                    username=username,
+                    email=email,
+                    name=name,
+                    google_id=google_id,
+                    provider="google",
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+
             # Create access token
             access_token_expires = timedelta(minutes=config.ACCESS_TOKEN_EXPIRE_MINUTES)
             access_token = create_access_token(
                 data={"sub": username}, expires_delta=access_token_expires
             )
-            
+            # Persist session
+            session = orm.Session(
+                user_id=user.id,
+                token=access_token,
+                expires_at=datetime.utcnow() + access_token_expires,
+            )
+            db.add(session)
+            db.commit()
+
             return Token(
                 access_token=access_token,
                 token_type="bearer",

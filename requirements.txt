@@ -8,3 +8,8 @@ google-auth-oauthlib
 google-auth-httplib2
 requests
 python-dotenv
+sqlalchemy>=2.0
+deepface
+tf-keras
+numpy
+scikit-learn

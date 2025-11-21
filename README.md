@@ -1,11 +1,12 @@
 # Wedding Photo Sharing Backend
 
-A secure, modular FastAPI backend service for wedding photo sharing with Google OAuth authentication, real-time guest tracking, and image management capabilities.
+A secure, modular FastAPI backend service for wedding photo sharing with Google OAuth authentication, real-time guest tracking, image management, and persistent database storage.
 
 ## 🎯 Features
 
 - **Google OAuth Authentication** - Secure login with Google accounts
 - **Image Upload & Management** - Support for JPG, JPEG, PNG files with validation
+- **Persistent Storage** - SQLite/SQLAlchemy for users, sessions, and photos
 - **Real-time Guest Tracking** - WebSocket connections for live guest count
 - **Secure File Handling** - Content validation, size limits, and unique filename generation
 - **Modular Architecture** - Clean separation of concerns with organized directory structure
@@ -74,6 +75,79 @@ A secure, modular FastAPI backend service for wedding photo sharing with Google 
 
 The API will be available at `http://127.0.0.1:8000`
 
+## Database Setup
+
+This project now includes a database for persisting:
+- Users (Google-authenticated)
+- Login sessions (JWT session records with expiry)
+- Photos (metadata for each uploaded file)
+
+Default DB is SQLite stored at `./data/app.db`. You can override with `DB_URL` (e.g., PostgreSQL) if desired.
+
+### Configure
+
+Add the following to your `.env` (or export as environment variables):
+
+```
+DB_URL=sqlite:///./data/app.db
+```
+
+### Initialize
+
+Create tables locally:
+
+```
+python scripts/setup_db.py
+```
+
+On Windows (Batch):
+
+```
+scripts\init_db.bat
+```
+
+### Run Locally
+
+Start the backend (ensures tables exist on start):
+
+```
+python main.py
+```
+
+Or using provided script on Windows:
+
+```
+scripts\start.bat
+```
+
+### Docker
+
+The Docker image now exposes `DB_URL` as an environment variable. For SQLite (default), a `data/` directory is created inside the container.
+
+```
+docker build -t wedding-photo-backend .
+docker run -p 8000:8000 --env-file .env wedding-photo-backend
+```
+
+To mount SQLite outside the container for persistence:
+
+```
+docker run -p 8000:8000 \
+  -v $(pwd)/data:/app/data \
+  --env-file .env \
+  wedding-photo-backend
+```
+
+### Switching to PostgreSQL
+
+Set `DB_URL` accordingly (example):
+
+```
+DB_URL=postgresql+psycopg://user:password@localhost:5432/photo_app
+```
+
+Install a suitable driver (e.g., `psycopg`), and run migrations as needed.
+
 ## ⚙️ Environment Configuration
 
 Create a `.env` file in the project root with the following variables:
@@ -85,7 +159,7 @@ ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 # Google OAuth
-GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_ID=163092054167-svtia0dcjfaq3152kcr6leueiff6d6mk.apps.googleusercontent.com
 
 # Server Configuration
 SERVER_HOST=127.0.0.1
