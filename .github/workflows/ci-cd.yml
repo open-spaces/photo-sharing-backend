@@ -9,12 +9,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  cleanup:
+    runs-on: self-hosted
+    steps:
+      - name: Clean workspace with proper permissions
+        run: |
+          sudo rm -rf ${{ github.workspace }} || true
+          mkdir -p ${{ github.workspace }}
+
   ci-tests:
     runs-on: self-hosted
+    needs: cleanup
     container:
       image: python:3.11
+      options: --user 1001
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: true
       - name: Install deps
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
@@ -28,11 +40,13 @@ jobs:
     needs: ci-tests
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: true
       - name: Sync to /srv/wedding/backend
         run: rsync -a --delete --exclude='.git' ./ /srv/wedding/backend/
       - name: Build backend image
-        run: docker compose -f /srv/wedding/docker-compose.yml build backend
+        run: docker compose -f /srv/wedding/docker-compose.yml build --no-cache backend
       - name: Start/Update backend
-        run: docker compose -f /srv/wedding/docker-compose.yml up -d backend
+        run: docker compose -f /srv/wedding/docker-compose.yml up -d --no-deps backend
       - name: Cleanup dangling images
         run: docker image prune -f
