@@ -27,6 +27,9 @@ jobs:
           python3 -m pip install -r requirements.txt
 
       - name: Validate FastAPI app starts
+        env:
+          SECRET_KEY: test_secret_key_for_ci
+          GOOGLE_CLIENT_ID: test_google_client_id
         run: |
           timeout 10 python3 -m uvicorn main:app --host 127.0.0.1 --port 8001 &
           sleep 5
