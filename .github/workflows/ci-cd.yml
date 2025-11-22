@@ -51,7 +51,7 @@ jobs:
       # ---- Sync working tree to deployment dir ----
       - name: Sync to /srv/wedding/backend
         run: |
-          rsync -a --delete --exclude='.git' ./ /srv/wedding/photo-sharing-backend/
+          rsync -a --delete --exclude='.git' --exclude='./uploads' ./ /srv/wedding/photo-sharing-backend/
           rsync -a --delete --exclude='.git' /home/ariel/wedding-app/docker-compose.yml /srv/wedding/docker-compose.yml
 
       # ---- Build & Deploy with Compose on the server ----
@@ -60,6 +60,9 @@ jobs:
           DOCKER_BUILDKIT: 1
           COMPOSE_DOCKER_CLI_BUILD: 1
         run: docker compose -f /srv/wedding/docker-compose.yml build backend
+
+      - name: Start DB
+        run: docker compose -f /srv/wedding/docker-compose.yml up -d --no-deps postgres
 
       - name: Start/Update backend
         run: docker compose -f /srv/wedding/docker-compose.yml up -d --no-deps backend

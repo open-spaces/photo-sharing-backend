@@ -9,6 +9,7 @@ google-auth-httplib2
 requests
 python-dotenv
 sqlalchemy>=2.0
+psycopg2-binary
 deepface
 tf-keras
 numpy
