@@ -1,5 +1,25 @@
 import os
 from PIL import Image, ExifTags
+from PIL.TiffImagePlugin import IFDRational
+
+def _make_json_serializable(obj):
+    """Convert non-JSON-serializable objects to serializable types."""
+    if isinstance(obj, IFDRational):
+        return float(obj)
+    elif isinstance(obj, bytes):
+        return obj.decode('utf-8', errors='ignore')
+    elif isinstance(obj, (tuple, list)):
+        return [_make_json_serializable(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {k: _make_json_serializable(v) for k, v in obj.items()}
+    else:
+        # For any other non-serializable type, convert to string
+        try:
+            import json
+            json.dumps(obj)
+            return obj
+        except (TypeError, ValueError):
+            return str(obj)
 
 def extract_image_metadata(image_path: str) -> dict:
     """Extract metadata from an image file."""
@@ -10,7 +30,7 @@ def extract_image_metadata(image_path: str) -> dict:
         if img.format in ["JPEG", "JPG"]:
             exif_data = getattr(img, "_getexif", lambda: None)()
             if exif_data is not None:
-                exif = {ExifTags.TAGS.get(k, k): v for k, v in exif_data.items() if k in ExifTags.TAGS}
+                exif = {ExifTags.TAGS.get(k, k): _make_json_serializable(v) for k, v in exif_data.items() if k in ExifTags.TAGS}
                 return exif
             else:
                 return {"message": "No EXIF data found."}
