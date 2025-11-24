@@ -191,6 +191,7 @@ async def upload_images(
         size = image.file.tell()
         image.file.seek(0)
         
+        
         # if not is_file_size_valid(size, config.MAX_FILE_SIZE):
         #     raise HTTPException(status_code=413, detail="File too large. Max size is 5MB.")
 
