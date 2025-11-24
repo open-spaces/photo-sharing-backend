@@ -87,11 +87,12 @@ class AuthService:
             access_token = create_access_token(
                 data={"sub": username}, expires_delta=access_token_expires
             )
-            # Persist session
+            # Persist session (long-lived, e.g., 30 days)
+            session_expires = timedelta(days=30)
             session = orm.Session(
                 user_id=user.id,
                 token=access_token,
-                expires_at=datetime.utcnow() + access_token_expires,
+                expires_at=datetime.utcnow() + session_expires,
             )
             db.add(session)
             db.commit()
@@ -107,4 +108,55 @@ class AuthService:
             raise HTTPException(status_code=400, detail="Invalid Google token")
         except Exception as e:
             raise HTTPException(status_code=500, detail="Authentication failed")
+
+    @staticmethod
+    def refresh_token(token: str, db: Session) -> Token:
+        try:
+            # Decode token without verifying expiry
+            payload = jwt.decode(token, config.SECRET_KEY, algorithms=[config.ALGORITHM], options={"verify_exp": False})
+            username: str = payload.get("sub")
+            if username is None:
+                raise HTTPException(status_code=401, detail="Invalid token")
+            
+            # Get user
+            user = db.query(orm.User).filter(orm.User.username == username).first()
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found")
+
+            # Check session in DB
+            session = (
+                db.query(orm.Session)
+                .filter(orm.Session.user_id == user.id, orm.Session.token == token)
+                .first()
+            )
+            
+            if not session:
+                raise HTTPException(status_code=401, detail="Session not found")
+                
+            if session.revoked:
+                raise HTTPException(status_code=401, detail="Session revoked")
+                
+            if session.expires_at <= datetime.utcnow():
+                raise HTTPException(status_code=401, detail="Session expired")
+
+            # Session is valid. Issue new access token.
+            access_token_expires = timedelta(minutes=config.ACCESS_TOKEN_EXPIRE_MINUTES)
+            new_access_token = create_access_token(
+                data={"sub": username}, expires_delta=access_token_expires
+            )
+            
+            # Update session with new token
+            session.token = new_access_token
+            session.expires_at = datetime.utcnow() + timedelta(days=30)
+            
+            db.commit()
+            
+            return Token(
+                access_token=new_access_token,
+                token_type="bearer",
+                username=user.name
+            )
+
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Invalid token")
 

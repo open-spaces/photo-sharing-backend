@@ -29,7 +29,7 @@ class Config:
     
     # File settings
     UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
-    MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", str(5 * 1024 * 1024)))  # Default 5 MB
+    MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", str(300 * 1024 * 1024)))  # Default 100 MB
 
     # Database settings
     DB_URL = os.getenv("DB_URL", "sqlite:///./data/app.db")

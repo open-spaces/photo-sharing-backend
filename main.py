@@ -7,10 +7,10 @@ import shutil
 from typing import List
 from PIL import Image
 import hashlib
-
+from app.services.auth import AuthService, verify_token, security
+from fastapi.security import HTTPAuthorizationCredentials
 from app.core.config import config
 from app.models.models import Token, GoogleToken, PhotoOut, PersonOut, PersonWithPhotosOut, FaceOut
-from app.services.auth import AuthService, verify_token
 from app.services.websocket_manager import websocket_manager
 from app.services.face_service import detect_faces_in_image, find_matching_person
 from app.core.utils import extract_image_metadata, get_safe_filename, is_allowed_file_type, is_file_size_valid, validate_image_content
@@ -57,6 +57,11 @@ if is_production:
         "http://www.wedding.open-spaces.xyz"
     ]
 
+if is_production:
+    UPLOAD_PATH = "/api/uploads"
+else:
+    UPLOAD_PATH = "/uploads"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -65,6 +70,14 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global exception: {str(exc)}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "error": str(exc)},
+    )
+
 # Ensure DB tables exist on startup (works for uvicorn run too)
 @app.on_event("startup")
 async def _startup():
@@ -72,7 +85,7 @@ async def _startup():
 
 # Note: Static files (uploads) are served by nginx in production
 # In development, you can uncomment the line below or access files via nginx
-# app.mount("/uploads", StaticFiles(directory=config.UPLOAD_DIR), name="uploads")
+app.mount("/uploads", StaticFiles(directory=config.UPLOAD_DIR), name="uploads")
 
 # Background task for face detection
 def process_face_detection(photo_id: int, image_path: str):
@@ -148,6 +161,10 @@ async def google_login(google_token: GoogleToken, db: Session = Depends(get_db))
 @app.get("/verify-token")
 async def verify_user_token(current_user: str = Depends(verify_token)):
     return {"username": current_user, "valid": True}
+
+@app.post("/auth/refresh", response_model=Token)
+async def refresh_token(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
+    return AuthService.refresh_token(credentials.credentials, db)
 
 # File upload endpoints
 @app.post(
@@ -245,6 +262,9 @@ async def upload_images(
 
         added += 1
 
+    # Clear cache
+    _photos_cache.clear()
+
     return JSONResponse(content={
         "message": "Files uploaded successfully",
         "count": added,
@@ -274,7 +294,7 @@ async def list_photos(request: Request, db: Session = Depends(get_db), response:
     )
     result: list[PhotoOut] = []
     for photo, user in rows:
-        url = f"{config.PUBLIC_URL}/api/uploads/{photo.stored_filename}"
+        url = f"{config.PUBLIC_URL}{UPLOAD_PATH}/{photo.stored_filename}"
         result.append(
             PhotoOut(
                 id=photo.id,
@@ -319,7 +339,7 @@ async def my_photos(request: Request, db: Session = Depends(get_db), current_use
     )
     result: list[PhotoOut] = []
     for photo in rows:
-        url = f"{config.PUBLIC_URL}/api/uploads/{photo.stored_filename}"
+        url = f"{config.PUBLIC_URL}{UPLOAD_PATH}/{photo.stored_filename}"
         result.append(
             PhotoOut(
                 id=photo.id,
@@ -353,7 +373,11 @@ async def delete_photo(
     photo = db.query(orm.Photo).filter(orm.Photo.id == photo_id).first()
     if not photo:
         raise HTTPException(status_code=404, detail="Photo not found")
-    if photo.user_id != user.id:
+    
+    # Check if user is admin or owner
+    is_admin = user.email == "arielsholet1234@gmail.com"
+    
+    if photo.user_id != user.id and not is_admin:
         raise HTTPException(status_code=403, detail="Not allowed to delete this photo")
     # Remove file from storage
     try:
@@ -504,7 +528,7 @@ async def get_persons(db: Session = Depends(get_db)):
                     person_id=representative_face_record.person_id,
                     bbox=json.loads(representative_face_record.bbox_json),
                     confidence=representative_face_record.confidence,
-                    photo_url=f"{config.PUBLIC_URL}/api/uploads/{photo.stored_filename}"
+                    photo_url=f"{config.PUBLIC_URL}{UPLOAD_PATH}/{photo.stored_filename}"
                 )
 
         result.append(PersonOut(
@@ -554,7 +578,7 @@ async def get_person_photos(
 
         result.append(PhotoOut(
             id=photo.id,
-            url=f"{config.PUBLIC_URL}/api/uploads/{photo.stored_filename}",
+            url=f"{config.PUBLIC_URL}{UPLOAD_PATH}/{photo.stored_filename}",
             original_filename=photo.original_filename,
             stored_filename=photo.stored_filename,
             content_type=photo.content_type,
@@ -592,7 +616,7 @@ async def get_photo_faces(
             person_id=face.person_id,
             bbox=json.loads(face.bbox_json),
             confidence=face.confidence,
-            photo_url=f"{config.PUBLIC_URL}/api/uploads/{photo.stored_filename}"
+            photo_url=f"{config.PUBLIC_URL}{UPLOAD_PATH}/{photo.stored_filename}"
         ))
 
     return result

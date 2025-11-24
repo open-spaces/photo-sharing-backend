@@ -14,3 +14,4 @@ deepface
 tf-keras
 numpy
 scikit-learn
+uvicorn[standard]

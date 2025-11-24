@@ -48,10 +48,10 @@ def detect_faces_in_image(image_path: str) -> List[Dict]:
                 continue
 
             # Extract embedding for this face
-            # We'll use Facenet512 for high-quality embeddings (512D)
+            # We'll use ArcFace for better performance with angles
             embedding_obj = DeepFace.represent(
                 img_path=image_path,
-                model_name='Facenet512',
+                model_name='ArcFace',
                 detector_backend='skip',  # Skip detection since we already detected
                 enforce_detection=False
             )
@@ -114,7 +114,7 @@ def calculate_embedding_similarity(embedding1: List[float], embedding2: List[flo
 def find_matching_person(
     new_embedding: List[float],
     existing_persons: List[Tuple[int, List[float]]],
-    threshold: float = 0.6
+    threshold: float = 0.4
 ) -> Optional[int]:
     """
     Find if a new face embedding matches any existing person.
